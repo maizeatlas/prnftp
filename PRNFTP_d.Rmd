@@ -86,7 +86,7 @@ If you have station data you need to get hourly temperature data to run the Tt f
 
 ```{r}
 # load field information used in the study
-file_S4 <- read.delim(paste0(data_path, "File_S4.txt"), header=T,  sep="\t")
+file_S4 <- read.delim(paste0(data_path, "File_S4_inputdata.txt"), header=T,  sep="\t")
 
 coordinates <- file_S4 %>%
   dplyr::select(lat, lon, env, year, project) %>% ### extract the coordinates and year of your file
