@@ -1,0 +1,372 @@
+---
+title: "PRNFTP with latent variable adjustment"
+author: "Justine Drouault (INRAE)"
+date: "2024-06-22 [v1.0]"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+#### This script reproduces the PRN-FTP model shown in Fig. 3 of the paper. #### 
+#### In this script, Tt and GDD interchangeably refer to thermal time calculated with Eq. S2 in the paper #### 
+
+```{r setup, include=FALSE}
+## clear objects in memory
+rm(list=ls(all=TRUE))
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### Load the required packages ####
+
+```{r}
+library(tidyverse)
+library(nasapower) ### to get the environmental conditions (temperature, but you can get others)
+library(TrenchR) ### to get the daylength 
+library(chngpt) ### to fit the change point model and get the prn-ftp
+```
+
+#### Define paths ####
+
+```{r}
+whose_dir <- "~/user_path"
+data_path <- paste0(whose_dir, "/data_path/")
+functions_path <- paste0(whose_dir, "/functions_path/")
+outputs_path <- paste0(whose_dir, "/outputs_path/")
+```
+
+#### Load functions ####
+
+```{r,}
+## this function computes the thermal time (Tt) from hourly temp data 
+source(paste0(functions_path,"WangEngel.R"))
+
+### this function sums Tt between starting date (e.g planting or emergence) until a threshold of Tt (e.g BVP_ti), and returns the date of year at which the threshold is reached 
+Date_TI <- source(paste0(functions_path,"Functions.R"))
+
+### this function sums Tt between between two dates (e.g planting or emergence and anthesis), returning a value of accumulated Tt 
+GDD_cum_date <- source(paste0(functions_path,"Functions.R"))
+
+### this function gets the daylength for a given location and day of the year, using the DOY value and the coordinates of the sites 
+daylength_ti <- source(paste0(functions_path,"Functions.R"))
+```
+
+#### Construct the x-axis for the PRN-FTP (the photoperiod index, DLs) ####
+
+###### Step 1: Calculate BVP-Ti per genotype ######
+
+<!-- BVP_Ti = (Ptip/(alphaphyll/plast))*(LF-Lpri_em) -->
+<!-- BVP_Ti = thermal time from emergence to tassel inititation  -->
+<!-- Ptip = phyllochron, visible leaves  -->
+<!-- alphaphyll/plast = ratio between plastochron and phyllochron -> cst = 1.173 -->
+<!-- FLN or LF = final leaf number  -->
+<!-- Lpri_em = number of primordium formed at emergence -> cst = 5.5 -->
+
+```{r}
+# retrieve BLUEs for final leaf number and phyllochron
+file_s2 <- read.delim(paste0(data_path, "File_S2.txt"), header=T, sep = "\t")
+
+panel1 <- file_s2 %>%
+  dplyr::group_by(genotype) %>% ## apply the formula per genotype 
+  dplyr::mutate(BVP_ti= ifelse(!is.na(BLUE_Ptip) & !is.na(BLUE_FLN), (BLUE_Ptip/1.73)*(BLUE_FLN - 5.5), NA ),
+                BVP_ti = round(BVP_ti, 2)) %>% 
+  as.data.frame()
+
+# if you do not have values of phyllochron or FLN use the reference of BVP_ti used in the paper 319 gdd units
+```
+
+The chunks containing step 2 and step 3 are here as an example to show how hourly temperature data can be extracted from nasapower and transformed in Tt. But, as in our study a mix of station and satellite data were used (see File S3), we provided at the end of step 3 the file containing the Tt calculated for each environment (whether it is station or satellite). This file we be used in the rest of the script.
+
+###### Step 2: Retrieve hourly temperature data per for each environment ######
+
+Here we get hourly temperature data per env (year*location) to compute the Tt, based on Eq. S2 in the paper.
+If you have station data you need to get hourly temperature data to run the Tt function used here.
+
+```{r}
+# load field information used in the study
+file_S4 <- read.delim(paste0(data_path, "File_S4.txt"), header=T,  sep="\t")
+
+coordinates <- file_S4 %>%
+  dplyr::select(lat, lon, env, year, project) %>% ### extract the coordinates and year of your file
+  dplyr::distinct() %>%
+  dplyr::mutate(lon = as.character(lon))
+
+# use nasapower to get the temperature data
+meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinates$env)), function(x)
+{
+  daily_single_ag <- get_power(
+    community = "ag",
+    lonlat = c(x$lat, x$lat), ## specify the coordinate of the env
+    pars = c("T2M"), ### get the env parameters you want, you can hack on nasapower website 
+    dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), ## get the temperature values for the year corresponding to the env 
+    temporal_api = "hourly") ### need hourly temperature data 
+  return(daily_single_ag)}))
+```
+
+###### Step 3: Compute Tt per hour per day per environment ######
+ 
+```{r}
+meteo_data_hourly_1 <- meteo_data_hourly %>%
+  dplyr::group_by(LAT, YEAR, MO, DY) %>%
+  dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel GDD by lat and date
+  dplyr::ungroup()%>%
+  dplyr::select(LON, LAT, YEAR, MO, DY, WangEngel) %>% 
+  dplyr::rename("MM" = MO, "DD" = DY) %>%
+  dplyr::distinct() %>%
+  tidyr::unite(YYYYMMDD, c(YEAR:DD),sep = "_", remove = F) %>%
+  dplyr::mutate(YYYYMMDD = as.Date(YYYYMMDD, format = "%Y_%m_%d"))  %>%
+  dplyr::mutate(YYYYMMDD = as.character(YYYYMMDD)) %>%
+  as.data.frame
+
+# File with the thermal time for all the environments whether the meteo data come from station or satellite
+meteo_data_hourly_out_git <- read.csv(paste0(data_path, "20240624GitHub_meteo_data.csv"), header = T) %>%
+  split(.$LAT) %>%
+  map(function(x) x %>% filter(!is.na(MO) | !is.na(DY))) %>% bind_rows() 
+```
+
+###### Step 4: Get DLs ######
+
+<!-- The required values to get the daylength experienced at BVP-ti (Dls) are : -->
+<!-- - The coordinates of your sites -->
+<!-- - The temperature of each of your sites -->
+<!-- - The plating date -->
+<!-- - The emergence date -->
+
+<!-- We use the file containing the planting date and emergence date, coordinates of the field, genotype-specific values for BVP-ti (if available) or a common reference value (320) for BVP_ti-->
+
+```{r,}
+# for this example we don't work with the entire panel, but only with a subset of genotypes (Fig 3 in the paper)
+panel1 <- panel1 %>%
+  dplyr::filter(genotype %in% unique(file_S4$genotype)) 
+
+# use the functions Date_TI and daylength_ti, loaded above to get the date_DLs and daylength_DLs
+x_axis_constructed <- file_S4 %>%
+   dplyr::select(country, loc, year, env, lat, lon, genotype, project, date_planted, date_emerged) %>% #loc,
+  dplyr::full_join(panel1) %>% ## merge to get BVP_ti 
+  dplyr::mutate(lat = as.factor(lat), ## need to be in character to match the meteo file and be read by the functions 
+                across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")),
+                across(c(date_planted,  date_emerged, lat),~as.character(.))) %>% ## need to be in character to match the meteo file and be read by the functions 
+  dplyr::group_by(env, genotype, project, lat) %>% ## !! here go per row, or env & genotype to not get mixed data 
+  dplyr::mutate(date_DLs= ifelse(is.na(BVP_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git ,  LAT1= unique(lat), ENV1 = unique(env), 
+              start = unique(date_emerged), threshold = BVP_ti, #320
+              DATE = "YYYYMMDD", GDD ="WangEngel")), ### use ind thermal time at TI to get the date of the year at TI 
+              date_DLs = as.character(date_DLs), 
+              doy_DLs = lubridate::yday(date_DLs),
+              lat = as.numeric(as.character(lat)), 
+              daylength_DLs = ifelse(!is.na(doy_DLs), Daylength(lat, doy_DLs), NA), 
+              lat = as.character(lat))
+```
+
+#### Construct the y-axis for the PRN-FTP (accumulated Tt to anthesis) ####
+
+###### Step 1: Compute Tt from emergence to anthesis ######
+
+```{r}
+# Get Tt to anthesis by summing Tt from emergence to date anthesis
+y_axis_constructed <- file_S4 %>%
+  # dplyr::filter(env != "2005_NC") %>%
+  dplyr::select(country, loc,  year, env, lat, lon, genotype, project, date_planted, date_emerged, BLUE_DTA, SE_DTA) %>%
+  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")), #~as.Date(., format = "%m/%d/%y"))
+    blue_date_dta = (date_planted + BLUE_DTA), across(c(date_planted,  date_emerged, blue_date_dta, lat),~as.character(.))) %>%
+  # dplyr::rowwise() %>%
+  dplyr::group_by(env, genotype, project) %>%
+  # calculation Tt emergence - dta 
+  dplyr::mutate(blue_dta_eqs2 = ifelse(!is.na(blue_date_dta), 
+                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, 
+                                                  LAT1 = unique(lat), ENV1 = unique(env), threshold_max = unique(blue_date_dta), 
+                                                  threshold_min = unique(date_planted),
+                                                  DATE = "YYYYMMDD", GDD = "WangEngel" ), NA)) %>%
+  # calculation Tt planting - dta 
+  dplyr::mutate(blue_dta_em_eqs2 = ifelse(!is.na(blue_date_dta), 
+                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, 
+                                                  LAT1 = unique(lat), ENV1 = unique(env),  threshold_max = unique(blue_date_dta), 
+                                                  threshold_min = unique(date_emerged),
+                                                  DATE = "YYYYMMDD", GDD = "WangEngel" ), NA))
+```
+
+###### Step 2: Adjust for latent variable effects ######
+
+We are going to create two sets of insensitive genotypes, calculate their overall mean, get the deviation of the environmental mean of these genotypes from the overall mean, this deviation will be used to adjust the sensitive genotype for their variation in blue_dta_em_eqs2 due to latent variable. 
+
+set1 = B37, B73, M37W, Mo17, Oh43 for PhotoGrid, MDR, and Panzea environments
+set2 = 2369 and LH123Ht for Maize ATLAS environments 
+
+```{r}
+### Adjust Tt to anthesis for latent variables
+
+# Get the deviation of insensitive genotypes from their overall mean per environment 
+insensitive_genotype <- c("B37", "B73", "M37W", "Mo17", "Oh43", "LH123Ht", "2369") # list of insensitive genotypes
+
+adjustement_values <- y_axis_constructed %>%
+  dplyr::filter(genotype %in% insensitive_genotype) %>%
+  dplyr::mutate(set = ifelse(project == "Maize ATLAS", "set2", "set1")) %>% ### create sets
+  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "LH123Ht", NA, genotype)) %>% 
+  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "2369", NA, genotype)) %>% ### remove 2369 and LH123Ht from PhotoGrid environments
+  dplyr::filter(!is.na(genotype)) %>%
+  dplyr::group_by(set) %>%
+  dplyr::mutate(general_mean_dta_em_eqs2 = mean(blue_dta_em_eqs2, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(env) %>%
+  dplyr::mutate(env_mean_dta_em_eqs2 = mean(blue_dta_em_eqs2, na.rm = T)) %>%
+  dplyr::ungroup() %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(deviation_from_general_mean = env_mean_dta_em_eqs2 - general_mean_dta_em_eqs2) %>%
+  dplyr::select(env, deviation_from_general_mean) %>%
+  dplyr::distinct()
+
+# Adjust blue_dta_em_eqs2 with the deviation values 
+
+y_axis_constructed <- y_axis_constructed %>%
+  dplyr::full_join(adjustement_values) %>%
+  dplyr::group_by(env, genotype) %>% # adjustment is done per env 
+  dplyr::mutate(blue_dta_em_eqs2_adjusted = blue_dta_em_eqs2 - deviation_from_general_mean) 
+```
+
+#### Merge x-axis and y-axis data ####
+
+```{r}
+prnft <- x_axis_constructed %>%
+  dplyr::full_join(y_axis_constructed)
+
+# code to run if you want to recreate exactely file S4
+file_to_save <- prnft %>%
+  dplyr::select(-BLUE_Ptip, -BLUE_FLN, -deviation_from_general_mean ) %>%
+  dplyr::rename(se_day_dta = SE_DTA, bvpti_platform = BVP_ti) %>%
+  dplyr::relocate(date_DLs, .after = blue_dta_em_eqs2_adjusted ) %>%
+  dplyr::relocate(doy_DLs, .after = date_DLs ) %>%
+  dplyr::relocate(daylength_DLs, .after = doy_DLs ) %>%
+  dplyr::relocate(bvpti_platform, .after = date_emerged )
+
+# write.csv(file_to_save, paste0(outputs_path,"File_S4.csv"), row.names = F) 
+```
+
+#### PRN-FTP plots ####
+
+```{r,}
+## Filter the sensitive genotypes
+prnft <- prnft %>%
+  dplyr::filter(genotype == "CML10" | genotype == "CML258"| genotype == "CML277"| genotype == "CML341" | genotype == "CML373" | genotype == "Tzi8" | genotype == "Tzi9" ) 
+
+prnft_plot_unadjusted <- prnft %>%
+  ggplot(aes(x= daylength_DLs, y = blue_dta_em_eqs2))+ 
+  geom_point() +
+  facet_wrap(~genotype)
+prnft_plot_unadjusted
+
+prnft_plot_adjusted <- prnft %>%
+  ggplot(aes(x= daylength_DLs, y = blue_dta_em_eqs2_adjusted))+ 
+  geom_point() +
+  facet_wrap(~genotype)
+prnft_plot_adjusted
+```
+
+#### Fit the change point model to get paramater estimates for the PRN-FTP ####
+
+```{r,}
+###### adjusted values 
+## lists for storage
+Q <- list()
+R <- list()
+S <- list()
+median_loglik <- list()
+gtypes <- sort(unique(prnft$genotype)) ### subset per genotype 
+out_adjusted <- NULL
+
+## fit model per genotype
+for (a in 1:length(gtypes)) {
+  # a <- 1
+  gtype_sub <- subset(prnft, genotype==gtypes[a]) 
+  Q[[a]] <- chngptm(formula.1=blue_dta_em_eqs2_adjusted~1,
+                    formula.2=~daylength_DLs, 
+                    type="hinge", family="gaussian", 
+                    #lb.quantile=0.3, ## if you want to fix the threshold
+                    data=gtype_sub) 
+  median_loglik[[a]]<- as.data.frame(unclass(summary(Q[[a]]$logliks)), check.names = FALSE,
+                                     stringsAsFactors = FALSE)[3,1]
+  median_loglik <- median_loglik[[a]]
+  
+  # Extract intercept, slope, and SEs
+  intercept <- Q[[a]]$coefficients[1]
+  thershold <- Q[[a]]$coefficients[3]
+  slope <- Q[[a]]$coefficients[2]
+  intercept_se <- sqrt(diag(vcov(summary(Q[[a]]$best.fit))))[1]
+  thershold_se <- summary(Q[[a]])$chngpt['Std. Error']
+  slope_se <- sqrt(diag(vcov(summary(Q[[a]]$best.fit))))[2]
+  intercept_pvalue <- summary(Q[[a]]$best.fit)$coefficients[1,"Pr(>|t|)"]
+  slope_pvalue <- summary(Q[[a]]$best.fit)$coefficients[2,"Pr(>|t|)"]
+  
+  # Extract the genotype name 
+  genotype <- unique(gtype_sub$genotype)
+  
+  # Get teh fit of the model 
+  RSS <- c(crossprod(residuals(Q[[a]])))
+  MSE <- RSS / length(residuals(Q[[a]]))
+  RMSE <- sqrt(MSE)
+  
+  # Assemnble the element to make a summary table of the PRN-FTP for each genotype 
+  BVP_ti<- as.numeric(unique(gtype_sub$BVP_ti))
+  temp <- cbind(genotype, "intercept"=round(intercept,1), "intercept_se"=round(intercept_se,1), "intercept_pvalue"=intercept_pvalue, 
+                         "thershold"=round(thershold,1), "thershold_se"=round(thershold_se,1), "median_loglik"=round(median_loglik,1), 
+                         "slope"=round(slope,1), "slope_se"=round(slope_se,1), "slope_pvalue"=slope_pvalue, 
+                         "BVP_ti"=round(BVP_ti,1), "RMSE" = round(RMSE, 1))
+  out_adjusted <- rbind.data.frame(out_adjusted, temp)
+}
+
+rownames(out_adjusted) <- 1:nrow(out_adjusted)
+out_adjusted
+
+out_adjusted <- out_adjusted %>%
+  dplyr::mutate(across(intercept:RMSE, ~ as.numeric(as.character(.))))
+```
+
+#### Recreate figure 3 ####
+
+```{r,}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+out_adjusted <- out_adjusted %>%
+  dplyr::select(genotype, intercept, thershold, slope)
+
+facet_7p <- prnft %>% #data_merge_bis
+  dplyr::full_join(out_adjusted) %>%
+  dplyr::mutate(loc = factor(loc, levels = c("Gua", "Sen", "PR", "Mex", "FL", "cTX", "GA","nTX", "andrNC", "clayNC", "NC", "DE", "IA","NY", "WI", "Fra"))) %>%
+  dplyr::arrange(loc) %>%
+  dplyr::arrange(loc) %>%
+  ggplot(aes(x = daylength_DLs, y = blue_dta_em_eqs2_adjusted)) +
+  geom_point(size=3, alpha=0.8, color="black") + 
+  geom_vline(aes(xintercept = thershold), color="#D55E00", size=1.5) +
+  geom_segment( aes(x = min(daylength_DLs), y = intercept, xend = thershold, yend = intercept), color="#0072B2", size=1.5) +
+  geom_segment(aes(x = thershold, y = intercept, xend = max(daylength_DLs),
+                   yend = ( intercept + ( max(daylength_DLs) - thershold) * slope ) ), color="#F0E442", size=1.5) +
+  ylim(650, 1300) +
+  facet_wrap(vars(genotype), ncol=4, scales = "fixed") +
+  xlab(quote(bolditalic(DL)^bold(s) ~ bold("("*h*")"))) +
+  ylab(quote(atop(bolditalic(T)[t]^bold(em-ant) ~ bold(" ("*degree*"Cd)"), "(adjusted values)"))) +
+  theme(plot.background = element_blank()
+        ,legend.position = "none"
+        ,legend.direction="vertical"
+        ,legend.key.size = unit(1, "cm")
+        ,legend.text = element_text(size = 10, face="bold")
+        ,aspect.ratio = 1
+        ,legend.title = element_text(size=16, face="bold")
+        ,title = element_text(size=14, face="bold")
+        ,panel.grid.minor = element_blank()
+        ,panel.grid.major.x = element_line(colour="grey", size = 0.5, linetype=3)
+        ,panel.grid.major.y = element_line(colour="grey", size = 0.5, linetype=3)
+        ,panel.border = element_rect(colour="grey", size = 0.5, fill=NA)
+        ,panel.background = element_blank()
+        ,plot.title = element_text(face="bold")
+        ,axis.title.x = element_text(size=18, margin = margin(t=18))
+        ,axis.text.x = element_text(size=18, margin = margin(t=11))
+        ,axis.title.y = element_text(size=18, margin = margin(r=18))
+        ,axis.text.y = element_text(size=18)
+        ,axis.ticks.y = element_blank()
+        ,axis.ticks.x = element_blank()
+        ,strip.text.x = element_text(size = 16, face="bold")
+        # top, right, bottom, left
+        ,plot.margin=unit(c(0.55,0.5,0.8,0.5), "cm")
+  )
+facet_7p
+```
