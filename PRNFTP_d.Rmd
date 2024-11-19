@@ -98,7 +98,7 @@ meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinat
 {
   daily_single_ag <- get_power(
     community = "ag",
-    lonlat = c(x$lat, x$lat), ## specify the coordinate of the env
+    lonlat = c(x$lon, x$lat), ## specify the coordinate of the env
     pars = c("T2M"), ### get the env parameters you want, you can hack on nasapower website 
     dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), ## get the temperature values for the year corresponding to the env 
     temporal_api = "hourly") ### need hourly temperature data 
@@ -145,8 +145,7 @@ panel1 <- panel1 %>%
 x_axis_constructed <- file_S4 %>%
    dplyr::select(country, loc, year, env, lat, lon, genotype, project, date_planted, date_emerged) %>% #loc,
   dplyr::full_join(panel1) %>% ## merge to get BVP_ti 
-  dplyr::mutate(lat = as.factor(lat), ## need to be in character to match the meteo file and be read by the functions 
-                across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")),
+  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")),
                 across(c(date_planted,  date_emerged, lat),~as.character(.))) %>% ## need to be in character to match the meteo file and be read by the functions 
   dplyr::group_by(env, genotype, project, lat) %>% ## !! here go per row, or env & genotype to not get mixed data 
   dplyr::mutate(date_DLs= ifelse(is.na(BVP_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git ,  LAT1= unique(lat), ENV1 = unique(env), 
