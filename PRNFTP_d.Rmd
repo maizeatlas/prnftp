@@ -1,7 +1,7 @@
 ---
 title: "PRNFTP with latent variable adjustment"
 author: "Justine Drouault (INRAE)"
-date: "2024-06-22 [v1.0]"
+date: "2024-11-20 [v1.0]"
 output:
   html_document: default
   word_document: default
@@ -35,6 +35,13 @@ whose_dir <- "~/user_path"
 data_path <- paste0(whose_dir, "/data_path/")
 functions_path <- paste0(whose_dir, "/functions_path/")
 outputs_path <- paste0(whose_dir, "/outputs_path/")
+
+whose_dir <- "~/Dropbox-SE Dropbox/Justine Drouault"
+# whose_dir <- "~/Dropbox-SE Dropbox/Randall Wisser"
+data_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Files/")
+functions_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Scripts/")
+outputs_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Outputs/")
+# knitr::opts_knit$set(root.dir = outputs_path)
 ```
 
 #### Load functions ####
@@ -51,6 +58,7 @@ GDD_cum_date <- source(paste0(functions_path,"Functions.R"))
 
 ### this function gets the daylength for a given location and day of the year, using the DOY value and the coordinates of the sites 
 daylength_ti <- source(paste0(functions_path,"Functions.R"))
+
 ```
 
 #### Construct the x-axis for the PRN-FTP (the photoperiod index, DLs) ####
@@ -70,8 +78,8 @@ file_s2 <- read.delim(paste0(data_path, "File_S2.txt"), header=T, sep = "\t")
 
 panel1 <- file_s2 %>%
   dplyr::group_by(genotype) %>% ## apply the formula per genotype 
-  dplyr::mutate(BVP_ti= ifelse(!is.na(BLUE_Ptip) & !is.na(BLUE_FLN), (BLUE_Ptip/1.73)*(BLUE_FLN - 5.5), NA ),
-                BVP_ti = round(BVP_ti, 2)) %>% 
+  dplyr::mutate(TTem_ti= ifelse(!is.na(BLUE_Ptip) & !is.na(BLUE_FLN), (BLUE_Ptip/1.73)*(BLUE_FLN - 5.5), NA ),
+                TTem_ti = round(TTem_ti, 2)) %>% 
   as.data.frame()
 
 # if you do not have values of phyllochron or FLN use the reference of BVP_ti used in the paper 319 gdd units
@@ -90,8 +98,7 @@ file_S4 <- read.delim(paste0(data_path, "File_S4_inputdata.txt"), header=T,  sep
 
 coordinates <- file_S4 %>%
   dplyr::select(lat, lon, env, year, project) %>% ### extract the coordinates and year of your file
-  dplyr::distinct() %>%
-  dplyr::mutate(lon = as.character(lon))
+  dplyr::distinct() 
 
 # use nasapower to get the temperature data
 meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinates$env)), function(x)
@@ -102,6 +109,8 @@ meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinat
     pars = c("T2M"), ### get the env parameters you want, you can hack on nasapower website 
     dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), ## get the temperature values for the year corresponding to the env 
     temporal_api = "hourly") ### need hourly temperature data 
+  daily_single_ag$env <- unique(x$env) ### Add the environments to the meteo file because nasapower does not keep it
+  daily_single_ag$project <- unique(x$project) ### Add the project to the meteo file because nasapower does not keep it
   return(daily_single_ag)}))
 ```
 
@@ -112,13 +121,14 @@ meteo_data_hourly_1 <- meteo_data_hourly %>%
   dplyr::group_by(LAT, YEAR, MO, DY) %>%
   dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel GDD by lat and date
   dplyr::ungroup()%>%
-  dplyr::select(LON, LAT, YEAR, MO, DY, WangEngel) %>% 
+  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel) %>% 
   dplyr::rename("MM" = MO, "DD" = DY) %>%
   dplyr::distinct() %>%
   tidyr::unite(YYYYMMDD, c(YEAR:DD),sep = "_", remove = F) %>%
   dplyr::mutate(YYYYMMDD = as.Date(YYYYMMDD, format = "%Y_%m_%d"))  %>%
   dplyr::mutate(YYYYMMDD = as.character(YYYYMMDD)) %>%
   as.data.frame
+
 
 # File with the thermal time for all the environments whether the meteo data come from station or satellite
 meteo_data_hourly_out_git <- read.csv(paste0(data_path, "20240624GitHub_meteo_data.csv"), header = T) %>%
@@ -145,11 +155,12 @@ panel1 <- panel1 %>%
 x_axis_constructed <- file_S4 %>%
    dplyr::select(country, loc, year, env, lat, lon, genotype, project, date_planted, date_emerged) %>% #loc,
   dplyr::full_join(panel1) %>% ## merge to get BVP_ti 
-  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")),
+  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%m/%d/%y")), ## here the date format may needs to be adjusted according to the format you have in the used file
                 across(c(date_planted,  date_emerged, lat),~as.character(.))) %>% ## need to be in character to match the meteo file and be read by the functions 
   dplyr::group_by(env, genotype, project, lat) %>% ## !! here go per row, or env & genotype to not get mixed data 
-  dplyr::mutate(date_DLs= ifelse(is.na(BVP_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git ,  LAT1= unique(lat), ENV1 = unique(env), 
-              start = unique(date_emerged), threshold = BVP_ti, #320
+  dplyr::mutate(date_DLs= ifelse(is.na(TTem_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git, # or meteo_data_hourly_1 ,  
+                                                                                   LAT1= unique(lat), ENV1 = unique(env), 
+              start = unique(date_emerged), threshold = TTem_ti, #326
               DATE = "YYYYMMDD", GDD ="WangEngel")), ### use ind thermal time at TI to get the date of the year at TI 
               date_DLs = as.character(date_DLs), 
               doy_DLs = lubridate::yday(date_DLs),
@@ -167,19 +178,19 @@ x_axis_constructed <- file_S4 %>%
 y_axis_constructed <- file_S4 %>%
   # dplyr::filter(env != "2005_NC") %>%
   dplyr::select(country, loc,  year, env, lat, lon, genotype, project, date_planted, date_emerged, BLUE_DTA, SE_DTA) %>%
-  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%Y-%m-%d")), #~as.Date(., format = "%m/%d/%y"))
+  dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%m/%d/%y")), ## here the date format may needs to be adjusted according to the format you have in the used file #~as.Date(., format = "%m/%d/%y"))
     blue_date_dta = (date_planted + BLUE_DTA), across(c(date_planted,  date_emerged, blue_date_dta, lat),~as.character(.))) %>%
   # dplyr::rowwise() %>%
   dplyr::group_by(env, genotype, project) %>%
   # calculation Tt emergence - dta 
   dplyr::mutate(blue_dta_eqs2 = ifelse(!is.na(blue_date_dta), 
-                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, 
+                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env), threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_planted),
                                                   DATE = "YYYYMMDD", GDD = "WangEngel" ), NA)) %>%
   # calculation Tt planting - dta 
   dplyr::mutate(blue_dta_em_eqs2 = ifelse(!is.na(blue_date_dta), 
-                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, 
+                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env),  threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_emerged),
                                                   DATE = "YYYYMMDD", GDD = "WangEngel" ), NA))
@@ -201,8 +212,8 @@ insensitive_genotype <- c("B37", "B73", "M37W", "Mo17", "Oh43", "LH123Ht", "2369
 adjustement_values <- y_axis_constructed %>%
   dplyr::filter(genotype %in% insensitive_genotype) %>%
   dplyr::mutate(set = ifelse(project == "Maize ATLAS", "set2", "set1")) %>% ### create sets
-  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "LH123Ht", NA, genotype)) %>% 
-  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "2369", NA, genotype)) %>% ### remove 2369 and LH123Ht from PhotoGrid environments
+  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "LH123Ht", NA, genotype)) %>%
+  dplyr::mutate(genotype = ifelse(set == "set1" & genotype == "2369", NA, genotype)) %>%### remove 2369 and LH123Ht from PhotoGrid environments
   dplyr::filter(!is.na(genotype)) %>%
   dplyr::group_by(set) %>%
   dplyr::mutate(general_mean_dta_em_eqs2 = mean(blue_dta_em_eqs2, na.rm = T)) %>%
@@ -232,7 +243,7 @@ prnft <- x_axis_constructed %>%
 # code to run if you want to recreate exactely file S4
 file_to_save <- prnft %>%
   dplyr::select(-BLUE_Ptip, -BLUE_FLN, -deviation_from_general_mean ) %>%
-  dplyr::rename(se_day_dta = SE_DTA, bvpti_platform = BVP_ti) %>%
+  dplyr::rename(se_day_dta = SE_DTA, bvpti_platform = TTem_ti) %>%
   dplyr::relocate(date_DLs, .after = blue_dta_em_eqs2_adjusted ) %>%
   dplyr::relocate(doy_DLs, .after = date_DLs ) %>%
   dplyr::relocate(daylength_DLs, .after = doy_DLs ) %>%
