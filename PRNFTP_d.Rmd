@@ -76,7 +76,7 @@ panel1 <- file_s2 %>%
                 TTem_ti = round(TTem_ti, 2)) %>% 
   as.data.frame()
 
-# if you do not have values of phyllochron or FLN use the reference of BVP_ti used in the paper 319 gdd units
+# if you do not have values of phyllochron or FLN use the reference of BVP_ti used in the paper 326 gdd units
 ```
 
 The chunks containing step 2 and step 3 are here as an example to show how hourly temperature data can be extracted from nasapower and transformed in Tt. But, as in our study a mix of station and satellite data were used (see File S3), we provided at the end of step 3 the file containing the Tt calculated for each environment (whether it is station or satellite). This file we be used in the rest of the script.
