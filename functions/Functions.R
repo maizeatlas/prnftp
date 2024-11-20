@@ -63,7 +63,7 @@ ENV1 <- "2006_NC"
 ##### Load Sirius function 
 
 #source("/Users/jdrouault/Dropbox-SE Dropbox/Justine Drouault/inrae_jd/PhotoGrid/paper/scripts/R/gdd_from_SQ.R")
-source(paste0(whose_dir,"/inrae_jd/PhotoGrid/paper/scripts/R/gdd_from_SQ.R"))
+#source(paste0(whose_dir,"/inrae_jd/PhotoGrid/paper/scripts/R/gdd_from_SQ.R"))
 
 ##### Function to compute thermal time from emergence to TI
 
