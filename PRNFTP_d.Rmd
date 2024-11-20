@@ -36,12 +36,6 @@ data_path <- paste0(whose_dir, "/data_path/")
 functions_path <- paste0(whose_dir, "/functions_path/")
 outputs_path <- paste0(whose_dir, "/outputs_path/")
 
-whose_dir <- "~/Dropbox-SE Dropbox/Justine Drouault"
-# whose_dir <- "~/Dropbox-SE Dropbox/Randall Wisser"
-data_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Files/")
-functions_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Scripts/")
-outputs_path <- paste0(whose_dir, "/inrae_jd/Drouault_etal_paper1/Supplemental/Files/GitHub/Outputs/")
-# knitr::opts_knit$set(root.dir = outputs_path)
 ```
 
 #### Load functions ####
