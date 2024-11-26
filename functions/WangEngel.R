@@ -18,11 +18,6 @@ HourlyAirTemperature24 <- function(i, Tmin, deltaT, tsn, fac, ani, test, cas1, c
                   tsn*exp(-nightCoef*(i-cas2)/ani)) + Tmin
 }
 
-Tmin <- 1.28
-Tmax <- 15.6
-julianDate <- 1
-latitudeDeg <- 30.5
-
 HourlyAirTemperature <- function(Tmin, Tmax, julianDate, latitudeDeg, ..., maxLag=1.5, nightCoef=4, minLag=1) {
   latRad <- apply_unique(latitudeDeg, \(x) x*pi/180)
   
