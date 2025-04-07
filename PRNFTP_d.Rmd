@@ -1,7 +1,7 @@
 ---
 title: "PRNFTP with latent variable adjustment"
 author: "Justine Drouault (INRAE)"
-date: "2024-11-20 [v1.0]"
+date: "2025-07-04 [v1.1]"
 output:
   html_document: default
   word_document: default
