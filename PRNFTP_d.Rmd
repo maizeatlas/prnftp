@@ -331,6 +331,7 @@ out_adjusted <- out_adjusted %>%
 
 When fitting the bilinear model is not feasible due to insufficient density of data, inadequate coverage of 〖DL〗^s for threshold detection, or because it is not an appropriate model for all genotypes (i.e., photoperiod insensitive genotypes), we modeled the PRN-FTP as a linear regression function, forgoing threshold estimation. So that the intercept for T_t^(em-ant) is estimated at the mean 〖DL〗^s of SD environments rather than the shortest day environment, environments across the MET were first classified as SD or LD based on whether 〖DL〗^s falls below or above a fixed threshold, respectively (we used 13.5 h which corresponded to the average threshold estimated from the analysis of Dataset D4, see results). 
 
+```{r,}
 ## Step 1: Infer the critical photoperiod
 
 # The critical photoperiod is defined as the averaged critical photoperiod of the seven tropical genotypes of dataset D4, when the TTem-ant is adjusted and DLs is genotype specific
@@ -415,6 +416,8 @@ linear_regression_final <- slope %>%
   dplyr::full_join(pvalue_intercept) %>%
   dplyr::full_join(RMSE_results) %>%
   dplyr::mutate(across(slope:RMSE, ~round(., 2)))
+
+```
 
 #### Recreate figure 4 ####
 
