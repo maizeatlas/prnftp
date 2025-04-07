@@ -387,6 +387,14 @@ prnft <- prnft %>%
   pvalue_slope <- as.data.frame(pvalue_slope)
   pvalue_intercept <- as.data.frame(pvalue_intercept)
 
+  slope <- tibble::rownames_to_column(slope, "genotype")
+  intercept <- tibble::rownames_to_column(intercept, "genotype")
+  slope_se <- tibble::rownames_to_column(slope_se, "genotype")
+  se_intercept <- tibble::rownames_to_column(se_intercept, "genotype")
+  pvalue_slope <- tibble::rownames_to_column(pvalue_slope, "genotype")
+  pvalue_intercept <- tibble::rownames_to_column(pvalue_intercept, "genotype")
+  
+
 # Get the fit of the model 
   RMSE_results <- lapply(r_corrected, function(x) {
   RSS <- sum(residuals(x)^2)  # Residual Sum of Squares
