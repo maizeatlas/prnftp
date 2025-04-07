@@ -266,7 +266,9 @@ prnft_plot_adjusted <- prnft %>%
 prnft_plot_adjusted
 ```
 
-#### Fit the change point model to get paramater estimates for the PRN-FTP ####
+#### Fit bilinear model with change point to get paramater estimates for the PRN-FTP ####
+
+With a sufficient density of data and coverage of DLs spanning SD and LD environments, photoperiod sensitive genotypes are expected to follow a bilinear pattern of response. In SD environments T_t^(em-ant) remains constant, and above a critical threshold for LD environments it increases linearly with photoperiod. For this, we modeled tthe PRN-FTP can be modeled using as a continuous two-phase (bilinear) regression model function with threshold detection (Fong et al., 2017a).
 
 ```{r,}
 ###### adjusted values 
@@ -323,9 +325,98 @@ out_adjusted
 
 out_adjusted <- out_adjusted %>%
   dplyr::mutate(across(intercept:RMSE, ~ as.numeric(as.character(.))))
-```
 
-#### Recreate figure 3 ####
+```
+#### Alternative the bilinear model - fit the linear model ####
+
+When fitting the bilinear model is not feasible due to insufficient density of data, inadequate coverage of 〖DL〗^s for threshold detection, or because it is not an appropriate model for all genotypes (i.e., photoperiod insensitive genotypes), we modeled the PRN-FTP as a linear regression function, forgoing threshold estimation. So that the intercept for T_t^(em-ant) is estimated at the mean 〖DL〗^s of SD environments rather than the shortest day environment, environments across the MET were first classified as SD or LD based on whether 〖DL〗^s falls below or above a fixed threshold, respectively (we used 13.5 h which corresponded to the average threshold estimated from the analysis of Dataset D4, see results). 
+
+## Step 1: Infer the critical photoperiod
+
+# The critical photoperiod is defined as the averaged critical photoperiod of the seven tropical genotypes of dataset D4, when the TTem-ant is adjusted and DLs is genotype specific
+
+prnft <- prnft %>%
+  dplyr::mutate(Parameters = ifelse(daylength_DLs < 13.5, "SD", "LD")) 
+
+## Step 2: Calculate the DLs mean in LD and SD
+
+# These values will be used for the adjustement of the linear model were the average daylength in SD will be set to 0
+   diff_photoperiod <- prnft %>% 
+    dplyr::select(country:project, daylength_DLs, blue_dta_em_eqs2_adjusted, Parameters) %>%
+    dplyr::distinct() %>%
+    dplyr::group_by(genotype, Parameters) %>%
+    dplyr::mutate(genotype = as.character(genotype), 
+                  mean_daylength_DLs = mean(daylength_DLs, na.rm =T)) %>%
+    dplyr::select(genotype, mean_daylength_DLs, Parameters) %>%
+    dplyr::distinct()  
+  
+   
+## Step 3: Extract the DLs mean and adjsuted TTem-ant to fit the linear model 
+
+  fit_for_linear_regression <- prnft %>%
+    dplyr::select(genotype, country,env, Parameters, blue_dta_em_eqs2, blue_dta_em_eqs2_adjusted) %>%
+    dplyr::distinct() %>%
+    dplyr::group_by(genotype, Parameters) %>%
+    dplyr::full_join(diff_photoperiod) %>%
+    dplyr::ungroup() %>%
+    dplyr::group_by(genotype) %>%
+    dplyr::mutate(min_daylength = min(mean_daylength_DLs), 
+                  new_mean_daylength_bvpti = mean_daylength_DLs - min_daylength)
+  
+## Step 4: Fit the linear model on each genotype 
+
+  # split the dataset by group
+  regression.sp <- split(fit_for_linear_regression, fit_for_linear_regression$genotype)
+  
+  # run separate `lm` on each group and store the results in a list
+  r_corrected <- lapply(regression.sp, function(x) do.call("lm", list(blue_dta_em_eqs2_adjusted ~ new_mean_daylength_bvpti,  data = x)))
+  
+  # extract the coefficient of target variable in corrected data
+  slope <- sapply(r_corrected, function(x)x$coefficients[["new_mean_daylength_bvpti"]])
+  intercept <- sapply(r_corrected, function(x)x$coefficients[["(Intercept)"]])
+  slope_se <- sapply(r_corrected, function(x)summary(x)$coefficients[,"Std. Error"][["new_mean_daylength_bvpti"]])
+  se_intercept <- sapply(r_corrected, function(x)summary(x)$coefficients[,"Std. Error"][["(Intercept)"]])
+  pvalue_slope <- sapply(r_corrected, function(x)summary(x)$coefficients[,"Pr(>|t|)"][["new_mean_daylength_bvpti"]])
+  pvalue_intercept <- sapply(r_corrected, function(x)summary(x)$coefficients[,"Pr(>|t|)"][["(Intercept)"]])
+  
+  slope <- as.data.frame(slope)
+  intercept <- as.data.frame(intercept)
+  slope_se <- as.data.frame(slope_se)
+  se_intercept <- as.data.frame(se_intercept)
+  pvalue_slope <- as.data.frame(pvalue_slope)
+  pvalue_intercept <- as.data.frame(pvalue_intercept)
+
+# Get the fit of the model 
+  RMSE_results <- lapply(r_corrected, function(x) {
+  RSS <- sum(residuals(x)^2)  # Residual Sum of Squares
+  MSE <- RSS / length(residuals(x))  # Mean Squared Error
+  RMSE <- sqrt(MSE)  # Root Mean Squared Error
+  return(c(RSS = RSS, MSE = MSE, RMSE = RMSE))
+})
+
+  RMSE_results <- as.data.frame(RMSE_results)
+  
+  RMSE_results <- RMSE_results[3,]
+  
+  RMSE_results <- RMSE_results %>%
+    tidyr::pivot_longer(
+    everything(), 
+    names_to = c("genotype"), 
+    values_to = "RMSE"
+  )
+
+  ## Create the outcome table  
+  
+linear_regression_final <- slope %>%
+  dplyr::full_join(slope_se) %>%
+  dplyr::full_join(pvalue_slope) %>%
+  dplyr::full_join(intercept) %>%
+  dplyr::full_join(se_intercept) %>%
+  dplyr::full_join(pvalue_intercept) %>%
+  dplyr::full_join(RMSE_results) %>%
+  dplyr::mutate(across(slope:RMSE, ~round(., 2)))
+
+#### Recreate figure 4 ####
 
 ```{r,}
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
