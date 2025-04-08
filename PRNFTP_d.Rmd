@@ -120,8 +120,9 @@ meteo_data_hourly_1 <- meteo_data_hourly %>%
   dplyr::group_by(LAT, YEAR, MO, DY) %>%
   dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel thermal time by lat and date
   dplyr::mutate(TT20 = (TT20(hTemp = T2M, n = 24))) %>% ## Get TT20 thermal time by lat and date
+  #dplyr::mutate(GDD = (GrowingDegDays(maxT = Tmax, minT = Tmin, optT = 30, baseT = 10))) %>% ## Get GDD thermal time by lat and date, if your temperature data are recorded daily 
   dplyr::ungroup()%>%
-  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel, TT20) %>% 
+  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel, TT20) %>% #GDD
   dplyr::rename("MM" = MO, "DD" = DY) %>%
   dplyr::distinct() %>%
   tidyr::unite(YYYYMMDD, c(YEAR:DD),sep = "_", remove = F) %>%
