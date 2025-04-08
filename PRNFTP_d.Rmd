@@ -113,7 +113,8 @@ meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinat
 ```{r}
 meteo_data_hourly_1 <- meteo_data_hourly %>%
   dplyr::group_by(LAT, YEAR, MO, DY) %>%
-  dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel GDD by lat and date
+  dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel thermal time by lat and date
+  dplyr::mutate(TT20 = (TT20(hTemp = T2M, n = 24))) %>% ## Get TT20 thermal time by lat and date
   dplyr::ungroup()%>%
   dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel) %>% 
   dplyr::rename("MM" = MO, "DD" = DY) %>%
