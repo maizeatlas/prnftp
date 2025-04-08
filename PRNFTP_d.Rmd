@@ -41,8 +41,13 @@ outputs_path <- paste0(whose_dir, "/outputs_path/")
 #### Load functions ####
 
 ```{r,}
-## this function computes the thermal time (Tt) from hourly temp data 
+## these functions compute the thermal time (Tt) from hourly temp data 
 source(paste0(functions_path,"WangEngel.R"))
+source(paste0(functions_path,"TT20.R"))
+
+## this function computes the thermal time (Tt) from daily temp data 
+source(paste0(functions_path,"GDD.R"))
+
 
 ### this function sums Tt between starting date (e.g planting or emergence) until a threshold of Tt (e.g BVP_ti), and returns the date of year at which the threshold is reached 
 Date_TI <- source(paste0(functions_path,"Functions.R"))
