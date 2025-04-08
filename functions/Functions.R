@@ -44,12 +44,12 @@ convert_minutes <- function(minutes) {
 
 ##### Function to cumsum TT between two dates
 
-GDD_cum_date <- function(dataset, LAT1, ENV1, threshold_max, threshold_min, DATE, GDD){ 
+GDD_cum_date <- function(dataset, LAT1, ENV1, threshold_max, threshold_min, DATE, TT){ 
   dataset1 <- subset(dataset, LAT == LAT1 & env == ENV1) ### subset by location
-  vector <- dataset1[,GDD][dataset1[,DATE] >= threshold_min & dataset1[,DATE] <= threshold_max] ### cumsum between emergence and anthesis
+  vector <- dataset1[,TT][dataset1[,DATE] >= threshold_min & dataset1[,DATE] <= threshold_max] ### cumsum between emergence and anthesis
   i <- cumsum(vector)
-  value_cumGDD<- tail(i,1)
-  return(value_cumGDD)
+  value_cumTT <- tail(i,1)
+  return(value_cumTT)
 }
 
 # dataset <- meteo_data_hourly_out_git
@@ -63,12 +63,12 @@ ENV1 <- "2006_NC"
 
 ##### Function to compute thermal time from emergence to TI
 
-Date_TI <- function( dataset, LAT1,  ENV1,  start, threshold, DATE, GDD){ #ENV1,
+Date_TI <- function( dataset, LAT1,  ENV1,  start, threshold, DATE, TT){ #ENV1,
   dataset1 <- subset(dataset, LAT == LAT1 & env == ENV1) #& env == ENV1
   DATE1 <- dataset1[,DATE]
   vector <- DATE1[DATE1 >= start]
-  # dataset1[,GDD][is.na(dataset1[,GDD])] <- 0
-  i <- which.min(abs(threshold - cumsum((dataset1[,GDD][which(DATE1>= start)]))))
+  # dataset1[,TT][is.na(dataset1[,TT])] <- 0
+  i <- which.min(abs(threshold - cumsum((dataset1[,TT][which(DATE1>= start)]))))
   Date <- vector[[i]]  
   return(Date)
 }
