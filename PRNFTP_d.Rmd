@@ -121,7 +121,7 @@ meteo_data_hourly_1 <- meteo_data_hourly %>%
   dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel thermal time by lat and date
   dplyr::mutate(TT20 = (TT20(hTemp = T2M, n = 24))) %>% ## Get TT20 thermal time by lat and date
   dplyr::ungroup()%>%
-  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel) %>% 
+  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel, TT20) %>% 
   dplyr::rename("MM" = MO, "DD" = DY) %>%
   dplyr::distinct() %>%
   tidyr::unite(YYYYMMDD, c(YEAR:DD),sep = "_", remove = F) %>%
@@ -130,7 +130,7 @@ meteo_data_hourly_1 <- meteo_data_hourly %>%
   as.data.frame
 
 
-# File with the thermal time for all the environments whether the meteo data come from station or satellite
+# File with the thermal time for all the environments of dataset D4 (meteo data come from station or satellite) 
 meteo_data_hourly_out_git <- read.csv(paste0(data_path, "20240624GitHub_meteo_data.csv"), header = T) %>%
   split(.$LAT) %>%
   map(function(x) x %>% filter(!is.na(MO) | !is.na(DY))) %>% bind_rows() 
@@ -161,7 +161,8 @@ x_axis_constructed <- file_S4 %>%
   dplyr::mutate(date_DLs= ifelse(is.na(TTem_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git, # or meteo_data_hourly_1 ,  
                                                                                    LAT1= unique(lat), ENV1 = unique(env), 
               start = unique(date_emerged), threshold = TTem_ti, #326
-              DATE = "YYYYMMDD", TT ="WangEngel")), ### use ind thermal time at TI to get the date of the year at TI 
+              DATE = "YYYYMMDD", TT ="WangEngel"#or TT20, GDD
+              )), ### use ind thermal time at TI to get the date of the year at TI 
               date_DLs = as.character(date_DLs), 
               doy_DLs = lubridate::yday(date_DLs),
               lat = as.numeric(as.character(lat)), 
@@ -187,13 +188,14 @@ y_axis_constructed <- file_S4 %>%
                                      GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env), threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_planted),
-                                                  DATE = "YYYYMMDD", TT = "WangEngel" ), NA)) %>%
-  # calculation Tt planting - dta 
+                                                  DATE = "YYYYMMDD", TT = "WangEngel" #or TT20, GDD 
+                                                  ), NA)) %>% # calculation Tt planting - dta 
   dplyr::mutate(blue_dta_em_eqs2 = ifelse(!is.na(blue_date_dta), 
                                      GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env),  threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_emerged),
-                                                  DATE = "YYYYMMDD", TT = "WangEngel" ), NA))
+                                                  DATE = "YYYYMMDD", TT = "WangEngel") #or TT20, GDD
+                                                  , NA))
 ```
 
 ###### Step 2: Adjust for latent variable effects ######
