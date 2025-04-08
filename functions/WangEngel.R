@@ -1,6 +1,6 @@
 ##### Calculate the thermal time using formula (Wang & Engel 2017)
 
-## Factultative -- Sinusoidale transformoation of daily data 
+## Factultative -- Sinusoidale transformation of daily data 
 # If temperature data are recorded daily, they need to be transformed into hourly values using the sinusoidale function called here 
 
 whose_dir <- "~/user_path"
