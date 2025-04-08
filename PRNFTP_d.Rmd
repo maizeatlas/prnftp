@@ -105,9 +105,9 @@ meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinat
   daily_single_ag <- get_power(
     community = "ag",
     lonlat = c(x$lon, x$lat), ## specify the coordinate of the env
-    pars = c("T2M"), ### get the env parameters you want, you can hack on nasapower website 
+    pars = c("T2M"), ### get the env parameters you want, you can hack on nasapower website ## change this to "Tmin" & "Tmax" if you want to calculate your thermal time in GDD
     dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), ## get the temperature values for the year corresponding to the env 
-    temporal_api = "hourly") ### need hourly temperature data 
+    temporal_api = "hourly") ### need hourly temperature data ## change this to "daily" if you want to calculate your thermal time in GDD
   daily_single_ag$env <- unique(x$env) ### Add the environments to the meteo file because nasapower does not keep it
   daily_single_ag$project <- unique(x$project) ### Add the project to the meteo file because nasapower does not keep it
   return(daily_single_ag)}))
@@ -161,7 +161,7 @@ x_axis_constructed <- file_S4 %>%
   dplyr::mutate(date_DLs= ifelse(is.na(TTem_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git, # or meteo_data_hourly_1 ,  
                                                                                    LAT1= unique(lat), ENV1 = unique(env), 
               start = unique(date_emerged), threshold = TTem_ti, #326
-              DATE = "YYYYMMDD", GDD ="WangEngel")), ### use ind thermal time at TI to get the date of the year at TI 
+              DATE = "YYYYMMDD", TT ="WangEngel")), ### use ind thermal time at TI to get the date of the year at TI 
               date_DLs = as.character(date_DLs), 
               doy_DLs = lubridate::yday(date_DLs),
               lat = as.numeric(as.character(lat)), 
@@ -187,13 +187,13 @@ y_axis_constructed <- file_S4 %>%
                                      GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env), threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_planted),
-                                                  DATE = "YYYYMMDD", GDD = "WangEngel" ), NA)) %>%
+                                                  DATE = "YYYYMMDD", TT = "WangEngel" ), NA)) %>%
   # calculation Tt planting - dta 
   dplyr::mutate(blue_dta_em_eqs2 = ifelse(!is.na(blue_date_dta), 
                                      GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
                                                   LAT1 = unique(lat), ENV1 = unique(env),  threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_emerged),
-                                                  DATE = "YYYYMMDD", GDD = "WangEngel" ), NA))
+                                                  DATE = "YYYYMMDD", TT = "WangEngel" ), NA))
 ```
 
 ###### Step 2: Adjust for latent variable effects ######
@@ -204,7 +204,7 @@ set1 = B37, B73, M37W, Mo17, Oh43 for PhotoGrid, MDR, and Panzea environments
 set2 = 2369 and LH123Ht for Maize ATLAS environments 
 
 ```{r}
-### Adjust Tt to anthesis for latent variables
+### Adjust TT to anthesis for latent variables
 
 # Get the deviation of insensitive genotypes from their overall mean per environment 
 insensitive_genotype <- c("B37", "B73", "M37W", "Mo17", "Oh43", "LH123Ht", "2369") # list of insensitive genotypes
