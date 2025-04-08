@@ -100,32 +100,40 @@ coordinates <- file_S4 %>%
   dplyr::distinct() 
 
 # use nasapower to get the temperature data
-meteo_data_hourly <- do.call(rbind, lapply(split(coordinates,as.factor(coordinates$env)), function(x)
+meteo_data <- do.call(rbind, lapply(split(coordinates,as.factor(coordinates$env)), function(x)
 {
   daily_single_ag <- get_power(
     community = "ag",
     lonlat = c(x$lon, x$lat), ## specify the coordinate of the env
-    pars = c("T2M"), ### to compute WangEngel or TT20; retrieve hourly temperature data from nasapower
-    ## pars = c("Tmin", "Tmax"), ### to compute GDD; retrieve daily temperature data from nasapower
-    dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), ## get the temperature values for the year corresponding to the env 
-    temporal_api = "hourly") ### need hourly temperature data ## change this to "daily" if you want to calculate your thermal time in GDD
-  daily_single_ag$env <- unique(x$env) ### Add the environments to the meteo file because nasapower does not keep it
-  daily_single_ag$project <- unique(x$project) ### Add the project to the meteo file because nasapower does not keep it
+## this is for WangEngel or TT20 temperature response functions, match with step 3 below
+    pars = c("T2M"), ## set pars to get from nasapower
+    dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), temporal_api = "hourly") ## get hourly temperature values for the year corresponding to the env
+## chage to this for GDD temperature response function, match with step 3 below
+    # pars = c("Tmin", "Tmax"), ## set pars to get from nasapower
+    # dates = c(paste0(x$year,"-01-01"),paste0(x$year,"-12-31")), temporal_api = "daily") ## get daily temperature values for the year corresponding to the env 
+  daily_single_ag$env <- unique(x$env) ## Add the environments to the meteo file because nasapower does not keep it
+  daily_single_ag$project <- unique(x$project) ## Add the project to the meteo file because nasapower does not keep it
   return(daily_single_ag)}))
 ```
 
-###### Step 3: Compute Tt per hour per day per environment ######
+###### Step 3: Compute Tt per hour or per day per environment ######
  
 ```{r}
-meteo_data_hourly_1 <- meteo_data_hourly %>%
+meteo_data_1 <- meteo_data %>%
   dplyr::group_by(LAT, YEAR, MO, DY) %>%
+## this is for WangEngel temperature response function
   dplyr::mutate(WangEngel = .rowMeans(WangEngel(hTemp = T2M, n=24), n=24, 1)) %>% ## Get WangEngel thermal time by lat and date
+## change to this is for TT20 temperature response function, matching step 2 setting
   #dplyr::mutate(TT20 = (TT20(hTemp = T2M, n = 24))) %>% ## Get TT20 thermal time by lat and date
+## change to this for GDD temperature response function, matching step 2 setting
   #dplyr::mutate(GDD = (GrowingDegDays(maxT = Tmax, minT = Tmin, optT = 30, baseT = 10))) %>% ## Get GDD thermal time by lat and date, if your temperature data are recorded daily 
   dplyr::ungroup()%>%
-  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel) %>% # select columns to be passed according to step 2... WangEngel
-  #dplyr::select(env, project, LON, LAT, YEAR, MO, DY, TT20) %>% # select columns to be passed according to step 2... TT20
-  #dplyr::select(env, project, LON, LAT, YEAR, MO, DY, GDD) %>% # select columns to be passed according to step 2... GDD
+## this is for WangEngel temperature response function
+  dplyr::select(env, project, LON, LAT, YEAR, MO, DY, WangEngel) %>%
+## change to this is for TT20 temperature response function, matching step 2 setting
+  #dplyr::select(env, project, LON, LAT, YEAR, MO, DY, TT20) %>%
+## change to this is for GDD temperature response function, matching step 2 setting
+  #dplyr::select(env, project, LON, LAT, YEAR, MO, DY, GDD) %>%
   dplyr::rename("MM" = MO, "DD" = DY) %>%
   dplyr::distinct() %>%
   tidyr::unite(YYYYMMDD, c(YEAR:DD),sep = "_", remove = F) %>%
@@ -134,7 +142,7 @@ meteo_data_hourly_1 <- meteo_data_hourly %>%
   as.data.frame
 
 # File with the thermal time for all the environments of dataset D4 (meteo data come from station or satellite) 
-meteo_data_hourly_out_git <- read.csv(paste0(data_path, "20240624GitHub_meteo_data.csv"), header = T) %>%
+meteo_data_out_git <- read.csv(paste0(data_path, "20240624GitHub_meteo_data.csv"), header = T) %>%
   split(.$LAT) %>%
   map(function(x) x %>% filter(!is.na(MO) | !is.na(DY))) %>% bind_rows() 
 ```
@@ -161,7 +169,7 @@ x_axis_constructed <- file_S4 %>%
   dplyr::mutate(across(c(date_planted, date_emerged), ~as.Date(., format = "%m/%d/%y")), ## here the date format may needs to be adjusted according to the format you have in the used file
                 across(c(date_planted,  date_emerged, lat),~as.character(.))) %>% ## need to be in character to match the meteo file and be read by the functions 
   dplyr::group_by(env, genotype, project, lat) %>% ## !! here go per row, or env & genotype to not get mixed data 
-  dplyr::mutate(date_DLs= ifelse(is.na(TTem_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_hourly_out_git, # or meteo_data_hourly_1 ,  
+  dplyr::mutate(date_DLs= ifelse(is.na(TTem_ti) | is.na(date_emerged), NA, Date_TI(dataset =  meteo_data_out_git, # or meteo_data_1 ,  
                                                                                    LAT1= unique(lat), ENV1 = unique(env), 
               start = unique(date_emerged), threshold = TTem_ti, #326
               DATE = "YYYYMMDD", TT ="WangEngel"#or TT20, GDD
@@ -188,13 +196,13 @@ y_axis_constructed <- file_S4 %>%
   dplyr::group_by(env, genotype, project) %>%
   # calculation Tt emergence - dta 
   dplyr::mutate(blue_dta_eqs2 = ifelse(!is.na(blue_date_dta), 
-                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
+                                     GDD_cum_date(dataset = meteo_data_out_git, # or meteo_data_1
                                                   LAT1 = unique(lat), ENV1 = unique(env), threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_planted),
                                                   DATE = "YYYYMMDD", TT = "WangEngel" #or TT20, GDD 
                                                   ), NA)) %>% # calculation Tt planting - dta 
   dplyr::mutate(blue_dta_em_eqs2 = ifelse(!is.na(blue_date_dta), 
-                                     GDD_cum_date(dataset = meteo_data_hourly_out_git, # or meteo_data_hourly_1
+                                     GDD_cum_date(dataset = meteo_data_out_git, # or meteo_data_1
                                                   LAT1 = unique(lat), ENV1 = unique(env),  threshold_max = unique(blue_date_dta), 
                                                   threshold_min = unique(date_emerged),
                                                   DATE = "YYYYMMDD", TT = "WangEngel") #or TT20, GDD
