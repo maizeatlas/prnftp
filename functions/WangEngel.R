@@ -1,5 +1,14 @@
 ##### Calculate the thermal time using formula (Wang & Engel 2017)
 
+## Factultative -- Sinusoidale transformoation of daily data 
+# If temperature data are recorded daily, they need to be transformed into hourly values using the sinusoidale function called here 
+
+whose_dir <- "~/user_path"
+functions_path <- paste0(whose_dir, "/functions_path/")
+
+source(paste0(functions_path,"Sinusoidale.R"))
+
+
 # * Growing degree days from hourly temperatures using Wang-Engel formula ----
 
 WangEngel <- \(hTemp, n, ..., Tbase=10, TMin=-17, TOpt=31.5, TMax=43, TShape=1.5, TrefMaize=20) {
